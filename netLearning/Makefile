@@ -3,6 +3,7 @@ NAME = program
 OBJ_PATH = obj
 SRC = src/
 
+
 SRCS = $(wildcard $(SRC)*.cpp)
 
 OBJS = $(addprefix obj/,$(notdir $(SRCS:.cpp=.o)))
