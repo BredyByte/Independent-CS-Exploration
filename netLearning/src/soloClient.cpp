@@ -5,6 +5,8 @@ int soloClient(int listening) {
 	socklen_t clientSize = sizeof(client);
 	char host[NI_MAXHOST];
 	char svc[NI_MAXSERV];
+	memset(host, 0, NI_MAXHOST);
+	memset(svc, 0, NI_MAXSERV);
 
 	int clientSocket = accept(listening, reinterpret_cast<sockaddr*>(&client), &clientSize);
 
@@ -14,10 +16,8 @@ int soloClient(int listening) {
 	}
 
 	// Close the listening socket
+	std::cout << clientSocket << " -> 4 - like open()" << std::endl;
 	close(listening);
-
-	memset(host, 0, NI_MAXHOST);
-	memset(svc, 0, NI_MAXSERV);
 
 	int result = getnameinfo(reinterpret_cast<sockaddr*>(&client), sizeof(client), host, NI_MAXHOST, svc, NI_MAXSERV, 0);
 
@@ -30,9 +30,8 @@ int soloClient(int listening) {
 	}
 
 	//While recieving - deplay messag, echo message
-	bool runningFlag = true;
 	char buf[4096];
-	while (runningFlag) {
+	while (true) {
 		// Clear buffer
 		memset(buf, 0, 4096);
 		// Wait for a message
@@ -56,7 +55,6 @@ int soloClient(int listening) {
 		receivedData.erase(0, receivedData.find_first_not_of(" \n\r\t"));
 		if (receivedData == "exit") {
 			std::cout << "Shutting down..." << std::endl;
-			runningFlag = false;
 			break ;
 		}
 		else {
@@ -68,7 +66,10 @@ int soloClient(int listening) {
 			/*
 				if the last arg will be 0, socket() is == write(clientSocket, buf, bytesRecv + 1);
 			*/
-			send(clientSocket, buf, bytesRecv + 1, 0);
+			if (send(clientSocket, buf, bytesRecv + 1, 0) == -1) {
+				perror("Error sending message");
+				break;
+			}
 		}
 	}
 	// Close socket

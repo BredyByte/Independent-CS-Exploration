@@ -11,6 +11,7 @@
 #include <string.h>
 #include <string>
 #include <csignal>
+#include <poll.h>
 
 
 int soloClient(int listening);

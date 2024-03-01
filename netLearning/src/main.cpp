@@ -17,46 +17,61 @@
 7 - Close socket
 */
 
+#define DEST_PORT 12000
+#define DEST_IP "127.0.0.1"
+
 int main() {
 	// Create Socket
-	int listening = socket(AF_INET, SOCK_STREAM, 0);
-	// std::cout << listening -> 3 - like open();
+	int listening = socket(PF_INET, SOCK_STREAM, 0);
 	if (listening == -1) {
-		std::cerr << "Can't create a socket" << std::endl;
-		return -1;
+		perror("Can't create a socket");
+		exit (-1);
 	}
 
 	// Bind the socket to a IP /port
     sockaddr_in hint;
 	hint.sin_family = AF_INET;
-	hint.sin_port = htons(54000);
-	// The same -> hint.sin_addr.s_addr = inet_addr("0.0.0.0");
-	if (inet_pton(AF_INET, "0.0.0.0", &hint.sin_addr) == -1) {
-		std::cerr << "inet_pton failed" << std::endl;
-		return -1;
+	hint.sin_port = htons(DEST_PORT);
+	//hint.sin_addr.s_addr = inet_addr(DEST_IP);
+	if (inet_pton(AF_INET, DEST_IP, &hint.sin_addr) == -1) {
+		perror("inet_pton failed");
+		exit(-2);
 	}
 	memset(&(hint.sin_zero), '\0', 8);
 
-	int opt = 1;
-	if (setsockopt(listening, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) == -1) {
-		std::cerr << "setsockopt failed" << std::endl;
-		return -2;
+	// I dont know what does this code....
+	struct hostent *h = gethostbyname("localhost");
+    if (h == NULL) {
+        herror("gethostbyname");
+        exit(-2);
+    }
+	printf("Host name  : %s\n", h->h_name);
+    printf("IP Address : %s\n", inet_ntoa(*((struct in_addr *)h->h_addr)));
+
+	char yes = 1;
+	if (setsockopt(listening, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) == -1) {
+		perror("setsockopt failed");
+    	exit(-3);
 	}
 
 	// Cast the sockaddr_in pointer to sockaddr pointer
 	if(bind(listening, reinterpret_cast<sockaddr*>(&hint), sizeof(hint)) == -1) {
-		std::cerr << "Can't bind to IP/port" << std::endl;
-		return -2;
+		perror("Can't bind to IP/port");
+		exit(-4);
 	}
+	/* 	if (connect(listening, reinterpret_cast<sockaddr*>(&hint), sizeof(struct sockaddr)) == -1) {
+		perror("Can't bind to IP/port");
+		exit(-4);
+	} */
 
 	//Mark the socket for listening in
 	if (listen(listening, SOMAXCONN) == -1) {
-		std::cerr << "Can't listen" << std::endl;
-		return -3;
+		perror("Can't listen");
+		exit (-5);
 	}
 
 	//Accept a call
-	int resp = multyClient(listening);
+	int resp = soloClient(listening);
 	return resp;
 }
 
