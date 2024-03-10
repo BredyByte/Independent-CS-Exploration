@@ -17,14 +17,14 @@ Server &Server::operator=(Server const &src) {
 }
 
 Server::~Server() {
-	// Destructor
+
 }
 
 int getServerSocket() {
 	int listening = socket(PF_INET, SOCK_STREAM, 0);
 	if (listening == -1) {
 		perror("Can't create a socket");
-		exit(1);
+		_exit(1);
 	}
 	return listening;
 }
@@ -44,7 +44,7 @@ void printServerInfo() {
 	hostent* host = gethostbyname(hostName);
 	if (host == NULL) {
 		herror("gethostbyname");
-		exit(1);
+		_exit(1);
 	}
 
 	std::cout << "IP Address: " << inet_ntoa(*(in_addr*)*host->h_addr_list) << std::endl;
@@ -57,14 +57,51 @@ void createNewpollfd(int some_socket, std::vector<pollfd> &_poll_fds) {
 	_poll_fds.push_back(listen_pollfd);
 }
 
+std::string getErrorPage() {
+	std::string page_html = "<!DOCTYPE html>"
+					"<html lang=\"en\">"
+					"<head>"
+					"    <meta charset=\"UTF-8\">"
+					"    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">"
+					"    <title>Error 404 Page</title>"
+					"    <link rel=\"stylesheet\" href=\"./main.css\">"
+					"</head>"
+					"<body>"
+					"    <h1>Error 404</h1>"
+					"    <h2>Page not found</h2>"
+					"    <a href=\"/\">Back</a>"
+					"</body>"
+					"</html>";
+	return page_html;
+}
+
+std::string getIndexPage() {
+	std::string page_html = "<!DOCTYPE html>"
+					"<html lang=\"en\">"
+					"<head>"
+					"    <meta charset=\"UTF-8\">"
+					"    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">"
+					"    <title>Index Page</title>"
+					"    <link rel=\"stylesheet\" href=\"./main.css\">"
+					"    <script src=\"./index.js\"></script>"
+					"</head>"
+					"<body>"
+					"    <h1>🖕</h1>"
+					"    <a href=\"/\">Back</a>"
+					"</body>"
+					"</html>";
+	return page_html;
+
+}
+
 void Server::_startServerLoop() {
 	createNewpollfd(_listen_sock, _poll_fds);
 
 	while(1) {
-		int ret = poll((pollfd *)&_poll_fds[0], (unsigned int)_poll_fds.size(), -1);
+		int ret = poll(reinterpret_cast<pollfd *>(&_poll_fds[0]), static_cast<unsigned int>(_poll_fds.size()), -1);
 		if (ret == -1) {
 			perror("poll failed");
-			exit(1);
+			_exit(1);
 		}
 
         std::vector<pollfd>::iterator it;
@@ -76,12 +113,11 @@ void Server::_startServerLoop() {
 					sockaddr_in client;
 					socklen_t addr_size = sizeof(sockaddr_in);
 
-					int client_sock = accept(_listen_sock, (sockaddr *)&client, &addr_size);
-					if( client_sock == -1) {
+					int client_sock = accept(_listen_sock, reinterpret_cast<sockaddr*>(&client), &addr_size);
+					if (client_sock == -1) {
 						perror("Can't accept client");
 						continue;
 					}
-
 					if (_poll_fds.size()-1 < MAX_CLIENTS)
                     {
 						createNewpollfd(client_sock, _poll_fds);
@@ -92,6 +128,7 @@ void Server::_startServerLoop() {
 						std::cout << "Server is full" << std::endl;
 						send(client_sock, "too many clients!!!", 20, 0);
 						close(client_sock);
+						continue;
                     }
 				}
 				else {
@@ -104,6 +141,7 @@ void Server::_startServerLoop() {
 						else {
 							perror("Unable to read from socket");
 						}
+						std::cout << "Closing socket" << std::endl;
 						close(it->fd);
 						_poll_fds.erase(it);
 					}
@@ -117,31 +155,101 @@ void Server::_startServerLoop() {
 						std::string page;
 						iss >> method >> page;
 
+						std::string response;
+
 						std::cout << "Received:___________\n " << buffer << std::endl;
 						if (method == "GET") {
-						std::string page_html = "<!DOCTYPE html>"
-												"<html lang=\"en\">"
-												"<head>"
-												"    <meta charset=\"UTF-8\">"
-												"    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">"
-												"    <title>Error Page</title>"
-												"    <link rel=\"stylesheet\" href=\"./main.css\">"
-												"</head>"
-												"<body>"
-												"    <h1>Hello</h1>"
-												"    <h2>World</h2>"
-												"    <a href=\"/\">Back</a>"
-												"</body>"
-												"</html>";
-							std::string response = "HTTP/1.1 200 OK\r\n";
-							response += "Content-Type: text/html\r\n";
-							response += "Content-Length: " + std::to_string(page_html.size()) + "\r\n";
-							response += "\r\n"; // End of headers
-							response += page_html; // Message body
+							if (page == "/") {
+								std::string page_html = getIndexPage();
 
-							std::cout << "Response:__________ \n" << response << std::endl;
-							send(it->fd, response.c_str(), response.size(), 0);
+								std::stringstream ss;
+								ss << page_html.size();
+
+								response += "HTTP/1.1 200 OK\r\n";
+								response += "Content-Type: text/html\r\n";
+								response += "Content-Length: " + ss.str() + "\r\n";
+								// to report and allow - Content-Security-Policy-Report-Only
+								response += "Content-Security-Policy: default-src 'self'; script-src 'none'; style-src 'none'; report-uri /csp-violation-report-endpoint;\r\n";
+								response += "Connection: close\r\n";
+								response += "\r\n"; // End of headers
+								response += page_html; // Message body
+
+								send(it->fd, response.c_str(), response.size(), 0);
+							}
+							else if (page.find(".css") != std::string::npos) {
+								std::string page_html = "a { color: red; background: black;} a:hover {color: black; background: red;}";
+
+								std::stringstream ss;
+								ss << page_html.size();
+
+								response += "HTTP/1.1 200 OK\r\n";
+								response += "Content-Type: text/css\r\n";
+								response += "Content-Length: " + ss.str() + "\r\n";
+								response += "Connection: close\r\n";
+								response += "\r\n"; // End of headers
+								response += page_html; // Message body
+
+								send(it->fd, response.c_str(), response.size(), 0);
+							}
+							else if (page.find(".js") != std::string::npos) {
+								std::string page_html = "console.log(\"Heelo World!!\")";
+
+								std::stringstream ss;
+								ss << page_html.size();
+
+								response += "HTTP/1.1 200 OK\r\n";
+								response += "Content-Type: text/javascript\r\n";
+								response += "Content-Length: " + ss.str() + "\r\n";
+								response += "Connection: close\r\n";
+								response += "\r\n";
+								response += page_html;
+
+								send(it->fd, response.c_str(), response.size(), 0);
+							}
+							else {
+								std::string page_html = getErrorPage();
+
+								std::stringstream ss;
+								ss << page_html.size();
+
+								response += "HTTP/1.1 404 Not Found\r\n";
+								response += "Content-Type: text/html\r\n";
+								response += "Content-Length: " + ss.str() + "\r\n";
+								response += "Connection: close\r\n";
+								response += "\r\n"; // End of headers
+								response += page_html; // Message body
+
+								send(it->fd, response.c_str(), response.size(), 0);
+							}
 						}
+						if (method == "POST") {
+							// documentation -> https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+							if (page == "/csp-violation-report-endpoint") {
+								time_t currentTime;
+								struct tm *localTime;
+								char timestamp[100];
+								time(&currentTime); // Get the current time
+								localTime = localtime(&currentTime); // Convert the current time to the local time
+								strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", localTime); // Format the timestamp
+
+								std::string report = std::string("Timestamp: ") + timestamp + "\nCSP Violation Report:\n" + request_line; // Assuming request contains the violation report
+								report += buffer; // Assuming request contains the violation report
+								report += "\r\n";
+								std::ofstream reportFile("csp_violation_report.txt", std::ios::app); // Open file in append mode
+								reportFile << report << std::endl;
+								reportFile.close();
+
+								// Send a response back to the browser
+								std::string response = "HTTP/1.1 202 OK\r\n";
+								response += "Content-Type: text/plain\r\n";
+								response += "Content-Length: 0\r\n";
+								response += "Connection: close\r\n";
+								response += "\r\n";
+								send(it->fd, response.c_str(), response.size(), 0);
+							}
+						}
+						memset(buffer, 0, 1024);
+						std::cout << "Response:__________ \n" << response << std::endl;
 					}
 				}
 			}
@@ -149,7 +257,7 @@ void Server::_startServerLoop() {
 				 if (it->fd == _listen_sock)
                 {
                     perror("listen socket error");
-                    exit(1);
+                    _exit(1);
                 }
                 else
                 {
@@ -170,22 +278,22 @@ void Server::startServer() {
 	int yes = 1;
 	if (setsockopt(_listen_sock, SOL_SOCKET, SO_REUSEADDR,  &yes, sizeof(int)) == -1) {
 		perror("setsockopt failed");
-    	exit(-1);
+    	_exit(-1);
 	}
 
 	if (setsockopt(_listen_sock, SOL_SOCKET, SO_BROADCAST,  &yes, sizeof(int)) == -1) {
 		perror("setsockopt failed");
-    	exit(-1);
+    	_exit(-1);
 	}
 
 	if(bind(_listen_sock, reinterpret_cast<sockaddr*>(&_server_addr), sizeof(_server_addr)) == -1) {
 		perror("Can't bind to IP/port");
-		exit(-1);
+		_exit(-1);
 	}
 
 	if (listen(_listen_sock, SOMAXCONN) == -1) {
 		perror("Can't listen");
-		exit (-1);
+		_exit (-1);
 	}
 
 	printServerInfo();
